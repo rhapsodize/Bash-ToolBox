@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+
+# usage: toolbox for CPU and memory alerts. Also sets up MySQL.
+
+cat <<-EOF
+      +----------------------------+
+      |         ToolBox            |
+      +----------------------------+
+      |    1. CPU Alerts           |
+      |    2. Memory Alerts        |
+      |    3. MySQL Setup          |
+      |    4. Exit                 |
+      +----------------------------+
+EOF
+read -p "Enter a number: " choose
+case ${choose} in
+# usage: monitor cpu status
+	1)
+		DATE=$(date +'%Y-%m-%d %H:%M:%S')
+    IPADDR=$(ifconfig | grep inet | awk 'BEGIN{ FS=" " }NR==1{ print $2 }')
+    MAIL="ken.zheng@live.com"
+    # Checking if vmstat is installed
+    if ! which vmstat &>/dev/null; then
+      yum -y install procps-ng &>/dev/null
+      if [ $? -eq 0 ];then
+        echo "vmstat already installed"
+      fi
+    fi
+
+    US=$(vmstat | awk 'BEGIN{ FS=" " }NR==3{ print $13 }')
+    SY=$(vmstat | awk 'BEGIN{ FS=" " }NR==3{ print $14 }')
+    ID=$(vmstat | awk 'NR==3{ print $15 }')
+    WA=$(vmstat | awk 'NR==3{ print $16 }')
+    ST=$(vmstat | awk 'NR==3{ print $17 }')
+
+    useTotal=$((${US}+${SY}))
+    if [[ ${useTotal} -ge 70 ]];then
+      echo "
+      Date: ${DATE}
+      Host: ${HOSTNAME}: ${IPADDR}
+      Problem: CPU usage: ${useTotal}%
+      " | mail -s "CPU Monitor Warning" ${MAIL}
+    fi
+
+  # usage: monitor Memory status
+	2)
+		DATE=$(date +'%Y-%m-%d %H:%M:%S')
+    IPADDR=$(ifconfig | grep inet | awk 'BEGIN{ FS=" " }NR==1{ print $2 }')
+    MAIL="ken.zheng@live.com"
+
+    TOTAL=$(free -mw | awk 'NR==2{ print $2 }')
+    USE=$(free -mw | awk 'BEGIN{ FS=" " }NR==2{ print $3 }')
+    FREE=$(free -mw | awk 'BEGIN{ FS=" " }NR==2{ print $4 }')
+    CACHE=$(free -mw | awk 'BEGIN{ FS=" " }NR==2{ print $7 }')
+    useRate=$(echo "((${USE}+${CACHE})/${TOTAL})*100" | bc -ql)
+    freeRate=$(echo "(${FREE}/${TOTAL})*100" | bc -ql)
+
+    if [[ ${FREE} -le 100 ]];then
+      echo "
+      Date: ${DATE}
+      Host: ${HOSTNAME}: ${IPADDR}
+      Problem:
+        Memory usage: ${useRate: 0: 5}%
+        free memory: ${freeRate: 0: 5}%
+      " | mail -s "Memory Monitor Warning" ${MAIL}
+    fi
+
+  # Sets up MySQL
+  3)
+    MPATH="/usr/local/mysqld"
+
+    # Allows MySQL to have read & write permission
+    id mysql &>/dev/null
+    if [ $? -ne 0 ];then
+      useradd -M -s /sbin/nologin mysql
+    fi
+    chown -R mysql:mysql /usr/local/mysqld
+
+    # Creates backup in /etc
+    if [ -f /etc/my.cnf ];then
+      mv /etc/my.cnf{,.bak}
+    fi
+    cp ${MPATH}/mysql/mysql-test/include/default_my.cnf /etc/my.cnf
+
+    # Adding MySQL to PATH
+    echo 'export PATH=$PATH:/usr/local/mysqld/mysql/bin' >>/etc/profile
+
+    # enables on start up.
+    if [ ! -f /etc/init.d/mysqld ];then
+      cp ${MPATH}/mysql/support-files/mysql.server /etc/init.d/mysqld
+      chkconfig --add mysqld && chkconfig mysqld on
+      ln -s ${MPATH}/mysql/support-files/mysql.server /usr/bin/mysqlctl
+    fi
+
+    # starts mysqld and sets up socket path
+    ps aux | grep mysql | grep -v grep &>/dev/null
+    if [ $? -ne 0 ];then
+      mysqlctl start
+      ln -s ${MPATH}/tmp/mysql.sock /tmp/mysql.sock
+    fi
+
+    # Initializing password
+    word=$(grep "temporary password" ${MPATH}/log/mysql_error.log)
+    passwd=${word##*" "}
+
+    echo "Thank for you using Ken's tools"
+    echo "Github: https://github.com/rhapsodize"
+    echo
+    echo
+    echo "User: root"
+    echo "Password: ${passwd}"
+    echo "your first run command: source /etc/profile"
+    echo "Please update password, use ALTER USER root@localhost IDENTIFIED BY userPassword;"
+    echo
+    echo "Complete ^_~"
+	4)
+		exit
+		;;
+	*)
+		echo "Please choose among (1, 2, 3)"
+esac

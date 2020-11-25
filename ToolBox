@@ -113,9 +113,9 @@ case ${choose} in
     echo "Please update password, use ALTER USER root@localhost IDENTIFIED BY userPassword;"
     echo
     echo "Complete ^_~"
-	4)
-		exit
-		;;
-	*)
-		echo "Please choose among (1, 2, 3)"
+    4)
+	exit
+	;;
+    *)
+	echo "Please choose among (1, 2, 3)"
 esac
